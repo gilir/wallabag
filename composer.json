@@ -87,6 +87,9 @@
         "defuse/php-encryption": "^2.1",
         "html2text/html2text": "^4.1"
     },
+    "suggest": {
+      "fr3d/ldap-bundle": "If you want to authenticate via LDAP"
+    },
     "require-dev": {
         "doctrine/doctrine-fixtures-bundle": "~2.2",
         "doctrine/data-fixtures": "~1.1",
