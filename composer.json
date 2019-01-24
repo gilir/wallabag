@@ -85,7 +85,8 @@
         "friendsofsymfony/jsrouting-bundle": "^1.6.3",
         "bdunogier/guzzle-site-authenticator": "^1.0.0",
         "defuse/php-encryption": "^2.1",
-        "html2text/html2text": "^4.1"
+        "html2text/html2text": "^4.1",
+        "fr3d/ldap-bundle": "^3.0"
     },
     "suggest": {
       "fr3d/ldap-bundle": "If you want to authenticate via LDAP"
