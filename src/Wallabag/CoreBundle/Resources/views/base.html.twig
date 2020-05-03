@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<!--[if lte IE 6]><html class="no-js ie6 ie67 ie678" lang="en"><![endif]-->
-<!--[if lte IE 7]><html class="no-js ie7 ie67 ie678" lang="en"><![endif]-->
-<!--[if IE 8]><html class="no-js ie8 ie678" lang="en"><![endif]-->
-<!--[if gt IE 8]><html class="no-js" lang="en"><![endif]-->
-<html>
+{% set lang = app.request.locale|default('') -%}
+<!--[if lte IE 6]><html class="no-js ie6 ie67 ie678"{% if lang is not empty %} lang="{{ lang }}"{% endif %}><![endif]-->
+<!--[if lte IE 7]><html class="no-js ie7 ie67 ie678"{% if lang is not empty %} lang="{{ lang }}"{% endif %}><![endif]-->
+<!--[if IE 8]><html class="no-js ie8 ie678"{% if lang is not empty %} lang="{{ lang }}"{% endif %}><![endif]-->
+<!--[if gt IE 8]><html class="no-js"{% if lang is not empty %} lang="{{ lang }}"{% endif %}><![endif]-->
+<html{% if lang is not empty %} lang="{{ lang }}"{% endif %}>
     <head>
         {% block head %}
             <meta name="viewport" content="initial-scale=1.0">
@@ -43,6 +44,9 @@
 
             {% block css %}
             {% endblock %}
+            {% if asset_file_exists('custom.css') %}
+                <link rel="stylesheet" href="{{ asset('custom.css') }}">
+            {% endif %}
             {% block scripts %}
             <script src="{{ asset('bundles/fosjsrouting/js/router.js') }}"></script>
             <script src="{{ path('fos_js_routing_js', { callback: 'fos.Router.setData' }) }}"></script>
@@ -71,8 +75,8 @@
 
         {% block footer %}{% endblock %}
 
-        {% if craue_setting('piwik_enabled') %}
-            {{ piwik(craue_setting('piwik_host'), craue_setting('piwik_site_id')) }}
+        {% if craue_setting('matomo_enabled') %}
+            {{ matomo(craue_setting('matomo_host'), craue_setting('matomo_site_id')) }}
         {% endif %}
     </body>
 </html>

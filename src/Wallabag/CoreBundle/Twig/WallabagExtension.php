@@ -4,40 +4,53 @@ namespace Wallabag\CoreBundle\Twig;
 
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Translation\TranslatorInterface;
+use Twig\Extension\AbstractExtension;
+use Twig\Extension\GlobalsInterface;
+use Twig\TwigFilter;
+use Twig\TwigFunction;
 use Wallabag\CoreBundle\Repository\EntryRepository;
 use Wallabag\CoreBundle\Repository\TagRepository;
 
-class WallabagExtension extends \Twig_Extension implements \Twig_Extension_GlobalsInterface
+class WallabagExtension extends AbstractExtension implements GlobalsInterface
 {
     private $tokenStorage;
     private $entryRepository;
     private $tagRepository;
     private $lifeTime;
     private $translator;
+    private $rootDir;
 
-    public function __construct(EntryRepository $entryRepository, TagRepository $tagRepository, TokenStorageInterface $tokenStorage, $lifeTime, TranslatorInterface $translator)
+    public function __construct(EntryRepository $entryRepository, TagRepository $tagRepository, TokenStorageInterface $tokenStorage, $lifeTime, TranslatorInterface $translator, string $rootDir)
     {
         $this->entryRepository = $entryRepository;
         $this->tagRepository = $tagRepository;
         $this->tokenStorage = $tokenStorage;
         $this->lifeTime = $lifeTime;
         $this->translator = $translator;
+        $this->rootDir = $rootDir;
+    }
+
+    public function getGlobals()
+    {
+        return [];
     }
 
     public function getFilters()
     {
         return [
-            new \Twig_SimpleFilter('removeWww', [$this, 'removeWww']),
-            new \Twig_SimpleFilter('removeSchemeAndWww', [$this, 'removeSchemeAndWww']),
+            new TwigFilter('removeWww', [$this, 'removeWww']),
+            new TwigFilter('removeScheme', [$this, 'removeScheme']),
+            new TwigFilter('removeSchemeAndWww', [$this, 'removeSchemeAndWww']),
         ];
     }
 
     public function getFunctions()
     {
         return [
-            new \Twig_SimpleFunction('count_entries', [$this, 'countEntries']),
-            new \Twig_SimpleFunction('count_tags', [$this, 'countTags']),
-            new \Twig_SimpleFunction('display_stats', [$this, 'displayStats']),
+            new TwigFunction('count_entries', [$this, 'countEntries']),
+            new TwigFunction('count_tags', [$this, 'countTags']),
+            new TwigFunction('display_stats', [$this, 'displayStats']),
+            new TwigFunction('asset_file_exists', [$this, 'assetFileExists']),
         ];
     }
 
@@ -46,11 +59,14 @@ class WallabagExtension extends \Twig_Extension implements \Twig_Extension_Globa
         return preg_replace('/^www\./i', '', $url);
     }
 
+    public function removeScheme($url)
+    {
+        return preg_replace('#^https?://#i', '', $url);
+    }
+
     public function removeSchemeAndWww($url)
     {
-        return $this->removeWww(
-            preg_replace('@^https?://@i', '', $url)
-        );
+        return $this->removeWww($this->removeScheme($url));
     }
 
     /**
@@ -150,6 +166,11 @@ class WallabagExtension extends \Twig_Extension implements \Twig_Extension_Globa
             '%nb_archives%' => $nbArchives,
             '%per_day%' => round($nbArchives / $nbDays, 2),
         ]);
+    }
+
+    public function assetFileExists($name)
+    {
+        return file_exists(realpath($this->rootDir . '/../web/' . $name));
     }
 
     public function getName()

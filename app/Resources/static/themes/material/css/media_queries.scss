@@ -12,10 +12,6 @@
   .pagination {
     margin-left: auto;
   }
-
-  .card-tag-labels li {
-    max-width: 50%;
-  }
 }
 
 @media screen and (min-width: 993px) {
@@ -185,5 +181,11 @@
   screen and (min-width: 1201px) and (max-width: 1250px) {
   .card .card-action .reading-time .card-created-at {
     display: none;
+  }
+}
+
+@media only print {
+  body {
+    display: block;
   }
 }

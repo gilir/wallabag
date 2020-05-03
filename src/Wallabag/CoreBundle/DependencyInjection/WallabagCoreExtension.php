@@ -18,7 +18,7 @@ class WallabagCoreExtension extends Extension
         $container->setParameter('wallabag_core.items_on_page', $config['items_on_page']);
         $container->setParameter('wallabag_core.theme', $config['theme']);
         $container->setParameter('wallabag_core.language', $config['language']);
-        $container->setParameter('wallabag_core.rss_limit', $config['rss_limit']);
+        $container->setParameter('wallabag_core.feed_limit', $config['rss_limit']);
         $container->setParameter('wallabag_core.reading_speed', $config['reading_speed']);
         $container->setParameter('wallabag_core.version', $config['version']);
         $container->setParameter('wallabag_core.paypal_url', $config['paypal_url']);
@@ -30,6 +30,7 @@ class WallabagCoreExtension extends Extension
         $container->setParameter('wallabag_core.api_limit_mass_actions', $config['api_limit_mass_actions']);
         $container->setParameter('wallabag_core.default_internal_settings', $config['default_internal_settings']);
         $container->setParameter('wallabag_core.site_credentials.encryption_key_path', $config['encryption_key_path']);
+        $container->setParameter('wallabag_core.default_ignore_origin_instance_rules', $config['default_ignore_origin_instance_rules']);
 
         $loader = new Loader\YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('services.yml');

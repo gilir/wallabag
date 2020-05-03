@@ -12,13 +12,14 @@ use Wallabag\CoreBundle\Entity\Entry;
 use Wallabag\CoreBundle\Tools\Utils;
 
 /**
- * This kind of proxy class take care of getting the content from an url
- * and update the entry with what it found.
+ * This kind of proxy class takes care of getting the content from an url
+ * and updates the entry with what it found.
  */
 class ContentProxy
 {
     protected $graby;
     protected $tagger;
+    protected $ignoreOriginProcessor;
     protected $validator;
     protected $logger;
     protected $mimeGuesser;
@@ -26,10 +27,11 @@ class ContentProxy
     protected $eventDispatcher;
     protected $storeArticleHeaders;
 
-    public function __construct(Graby $graby, RuleBasedTagger $tagger, ValidatorInterface $validator, LoggerInterface $logger, $fetchingErrorMessage, $storeArticleHeaders = false)
+    public function __construct(Graby $graby, RuleBasedTagger $tagger, RuleBasedIgnoreOriginProcessor $ignoreOriginProcessor, ValidatorInterface $validator, LoggerInterface $logger, $fetchingErrorMessage, $storeArticleHeaders = false)
     {
         $this->graby = $graby;
         $this->tagger = $tagger;
+        $this->ignoreOriginProcessor = $ignoreOriginProcessor;
         $this->validator = $validator;
         $this->logger = $logger;
         $this->mimeGuesser = new MimeTypeExtensionGuesser();
@@ -54,7 +56,11 @@ class ContentProxy
 
         if ((empty($content) || false === $this->validateContent($content)) && false === $disableContentUpdate) {
             $fetchedContent = $this->graby->fetchContent($url);
-            $fetchedContent['title'] = $this->sanitizeContentTitle($fetchedContent['title'], $fetchedContent['content_type']);
+
+            $fetchedContent['title'] = $this->sanitizeContentTitle(
+                $fetchedContent['title'],
+                isset($fetchedContent['headers']['content-type']) ? $fetchedContent['headers']['content-type'] : ''
+            );
 
             // when content is imported, we have information in $content
             // in case fetching content goes bad, we'll keep the imported information instead of overriding them
@@ -74,13 +80,14 @@ class ContentProxy
             $entry->setUrl($url);
         }
 
+        $entry->setGivenUrl($url);
+
         $this->stockEntry($entry, $content);
     }
 
     /**
      * Use a Symfony validator to ensure the language is well formatted.
      *
-     * @param Entry  $entry
      * @param string $value Language to validate and save
      */
     public function updateLanguage(Entry $entry, $value)
@@ -106,7 +113,6 @@ class ContentProxy
     /**
      * Use a Symfony validator to ensure the preview picture is a real url.
      *
-     * @param Entry  $entry
      * @param string $value URL to validate and save
      */
     public function updatePreviewPicture(Entry $entry, $value)
@@ -128,7 +134,6 @@ class ContentProxy
     /**
      * Update date.
      *
-     * @param Entry  $entry
      * @param string $value Date to validate and save
      */
     public function updatePublishedAt(Entry $entry, $value)
@@ -155,8 +160,6 @@ class ContentProxy
 
     /**
      * Helper to extract and save host from entry url.
-     *
-     * @param Entry $entry
      */
     public function setEntryDomainName(Entry $entry)
     {
@@ -170,8 +173,6 @@ class ContentProxy
      * Helper to set a default title using:
      * - url basename, if applicable
      * - hostname.
-     *
-     * @param Entry $entry
      */
     public function setDefaultEntryTitle(Entry $entry)
     {
@@ -188,8 +189,8 @@ class ContentProxy
     /**
      * Try to sanitize the title of the fetched content from wrong character encodings and invalid UTF-8 character.
      *
-     * @param $title
-     * @param $contentType
+     * @param string $title
+     * @param string $contentType
      *
      * @return string
      */
@@ -253,16 +254,14 @@ class ContentProxy
 
         if (!empty($content['title'])) {
             $entry->setTitle($content['title']);
-        } elseif (!empty($content['open_graph']['og_title'])) {
-            $entry->setTitle($content['open_graph']['og_title']);
         }
 
         if (empty($content['html'])) {
             $content['html'] = $this->fetchingErrorMessage;
 
-            if (!empty($content['open_graph']['og_description'])) {
+            if (!empty($content['description'])) {
                 $content['html'] .= '<p><i>But we found a short description: </i></p>';
-                $content['html'] .= $content['open_graph']['og_description'];
+                $content['html'] .= $content['description'];
             }
         }
 
@@ -277,8 +276,8 @@ class ContentProxy
             $entry->setPublishedBy($content['authors']);
         }
 
-        if (!empty($content['all_headers']) && $this->storeArticleHeaders) {
-            $entry->setHeaders($content['all_headers']);
+        if (!empty($content['headers'])) {
+            $entry->setHeaders($content['headers']);
         }
 
         if (!empty($content['date'])) {
@@ -289,17 +288,30 @@ class ContentProxy
             $this->updateLanguage($entry, $content['language']);
         }
 
-        if (!empty($content['open_graph']['og_image'])) {
-            $this->updatePreviewPicture($entry, $content['open_graph']['og_image']);
+        $previewPictureUrl = '';
+        if (!empty($content['image'])) {
+            $previewPictureUrl = $content['image'];
         }
 
         // if content is an image, define it as a preview too
-        if (!empty($content['content_type']) && \in_array($this->mimeGuesser->guess($content['content_type']), ['jpeg', 'jpg', 'gif', 'png'], true)) {
-            $this->updatePreviewPicture($entry, $content['url']);
+        if (!empty($content['headers']['content-type']) && \in_array($this->mimeGuesser->guess($content['headers']['content-type']), ['jpeg', 'jpg', 'gif', 'png'], true)) {
+            $previewPictureUrl = $content['url'];
+        } elseif (empty($previewPictureUrl)) {
+            $this->logger->debug('Extracting images from content to provide a default preview picture');
+            $imagesUrls = DownloadImages::extractImagesUrlsFromHtml($content['html']);
+            $this->logger->debug(\count($imagesUrls) . ' pictures found');
+
+            if (!empty($imagesUrls)) {
+                $previewPictureUrl = $imagesUrls[0];
+            }
         }
 
-        if (!empty($content['content_type'])) {
-            $entry->setMimetype($content['content_type']);
+        if (!empty($content['headers']['content-type'])) {
+            $entry->setMimetype($content['headers']['content-type']);
+        }
+
+        if (!empty($previewPictureUrl)) {
+            $this->updatePreviewPicture($entry, $previewPictureUrl);
         }
 
         try {
@@ -316,7 +328,6 @@ class ContentProxy
      * Update the origin_url field when a redirection occurs
      * This field is set if it is empty and new url does not match ignore list.
      *
-     * @param Entry  $entry
      * @param string $url
      */
     private function updateOriginUrl(Entry $entry, $url)
@@ -347,7 +358,7 @@ class ContentProxy
         $diff_keys = array_keys($diff);
         sort($diff_keys);
 
-        if ($this->ignoreUrl($entry->getUrl())) {
+        if ($this->ignoreOriginProcessor->process($entry)) {
             $entry->setUrl($url);
 
             return false;
@@ -387,44 +398,7 @@ class ContentProxy
     }
 
     /**
-     * Check entry url against an ignore list to replace with content url.
-     *
-     * XXX: move the ignore list in the database to let users handle it
-     *
-     * @param string $url url to test
-     *
-     * @return bool true if url matches ignore list otherwise false
-     */
-    private function ignoreUrl($url)
-    {
-        $ignored_hosts = ['feedproxy.google.com', 'feeds.reuters.com'];
-        $ignored_patterns = ['https?://www\.lemonde\.fr/tiny.*'];
-
-        $parsed_url = parse_url($url);
-
-        $filtered = array_filter($ignored_hosts, function ($var) use ($parsed_url) {
-            return $var === $parsed_url['host'];
-        });
-
-        if ([] !== $filtered) {
-            return true;
-        }
-
-        $filtered = array_filter($ignored_patterns, function ($var) use ($url) {
-            return preg_match("`$var`i", $url);
-        });
-
-        if ([] !== $filtered) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
      * Validate that the given content has at least a title, an html and a url.
-     *
-     * @param array $content
      *
      * @return bool true if valid otherwise false
      */

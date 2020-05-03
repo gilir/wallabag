@@ -2,12 +2,13 @@
 
 namespace Wallabag\CoreBundle\Controller;
 
+use Doctrine\ORM\NoResultException;
 use Pagerfanta\Adapter\DoctrineORMAdapter;
 use Pagerfanta\Exception\OutOfRangeCurrentPageException;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Cache;
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Wallabag\CoreBundle\Entity\Entry;
 use Wallabag\CoreBundle\Event\EntryDeletedEvent;
@@ -20,8 +21,49 @@ use Wallabag\CoreBundle\Form\Type\SearchEntryType;
 class EntryController extends Controller
 {
     /**
-     * @param Request $request
-     * @param int     $page
+     * @Route("/mass", name="mass_action")
+     *
+     * @return \Symfony\Component\HttpFoundation\Response
+     */
+    public function massAction(Request $request)
+    {
+        $em = $this->getDoctrine()->getManager();
+        $values = $request->request->all();
+
+        $action = 'toggle-read';
+        if (isset($values['toggle-star'])) {
+            $action = 'toggle-star';
+        } elseif (isset($values['delete'])) {
+            $action = 'delete';
+        }
+
+        if (isset($values['entry-checkbox'])) {
+            foreach ($values['entry-checkbox'] as $id) {
+                /** @var Entry * */
+                $entry = $this->get('wallabag_core.entry_repository')->findById((int) $id)[0];
+
+                $this->checkUserAction($entry);
+
+                if ('toggle-read' === $action) {
+                    $entry->toggleArchive();
+                } elseif ('toggle-star' === $action) {
+                    $entry->toggleStar();
+                } elseif ('delete' === $action) {
+                    $this->get('event_dispatcher')->dispatch(EntryDeletedEvent::NAME, new EntryDeletedEvent($entry));
+                    $em->remove($entry);
+                }
+            }
+
+            $em->flush();
+        }
+
+        $redirectUrl = $this->get('wallabag_core.helper.redirect')->to($request->headers->get('referer'));
+
+        return $this->redirect($redirectUrl);
+    }
+
+    /**
+     * @param int $page
      *
      * @Route("/search/{page}", name="search", defaults={"page" = 1})
      *
@@ -52,8 +94,6 @@ class EntryController extends Controller
     }
 
     /**
-     * @param Request $request
-     *
      * @Route("/new-entry", name="new_entry")
      *
      * @return \Symfony\Component\HttpFoundation\Response
@@ -96,8 +136,6 @@ class EntryController extends Controller
     }
 
     /**
-     * @param Request $request
-     *
      * @Route("/bookmarklet", name="bookmarklet")
      *
      * @return \Symfony\Component\HttpFoundation\Response
@@ -134,9 +172,6 @@ class EntryController extends Controller
     /**
      * Edit an entry content.
      *
-     * @param Request $request
-     * @param Entry   $entry
-     *
      * @Route("/edit/{id}", requirements={"id" = "\d+"}, name="edit")
      *
      * @return \Symfony\Component\HttpFoundation\Response
@@ -170,8 +205,7 @@ class EntryController extends Controller
     /**
      * Shows all entries for current user.
      *
-     * @param Request $request
-     * @param int     $page
+     * @param int $page
      *
      * @Route("/all/list/{page}", name="all", defaults={"page" = "1"})
      *
@@ -185,8 +219,7 @@ class EntryController extends Controller
     /**
      * Shows unread entries for current user.
      *
-     * @param Request $request
-     * @param int     $page
+     * @param int $page
      *
      * @Route("/unread/list/{page}", name="unread", defaults={"page" = "1"})
      *
@@ -205,8 +238,7 @@ class EntryController extends Controller
     /**
      * Shows read entries for current user.
      *
-     * @param Request $request
-     * @param int     $page
+     * @param int $page
      *
      * @Route("/archive/list/{page}", name="archive", defaults={"page" = "1"})
      *
@@ -220,8 +252,7 @@ class EntryController extends Controller
     /**
      * Shows starred entries for current user.
      *
-     * @param Request $request
-     * @param int     $page
+     * @param int $page
      *
      * @Route("/starred/list/{page}", name="starred", defaults={"page" = "1"})
      *
@@ -233,9 +264,46 @@ class EntryController extends Controller
     }
 
     /**
-     * Shows entry content.
+     * Shows untagged articles for current user.
      *
-     * @param Entry $entry
+     * @param int $page
+     *
+     * @Route("/untagged/list/{page}", name="untagged", defaults={"page" = "1"})
+     *
+     * @return \Symfony\Component\HttpFoundation\Response
+     */
+    public function showUntaggedEntriesAction(Request $request, $page)
+    {
+        return $this->showEntries('untagged', $request, $page);
+    }
+
+    /**
+     * Shows random entry depending on the given type.
+     *
+     * @param string $type
+     *
+     * @Route("/{type}/random", name="random_entry", requirements={"type": "unread|starred|archive|untagged|all"})
+     *
+     * @return \Symfony\Component\HttpFoundation\RedirectResponse
+     */
+    public function redirectRandomEntryAction($type = 'all')
+    {
+        try {
+            $entry = $this->get('wallabag_core.entry_repository')
+                ->getRandomEntry($this->getUser()->getId(), $type);
+        } catch (NoResultException $e) {
+            $bag = $this->get('session')->getFlashBag();
+            $bag->clear();
+            $bag->add('notice', 'flashes.entry.notice.no_random_entry');
+
+            return $this->redirect($this->generateUrl($type));
+        }
+
+        return $this->redirect($this->generateUrl('view', ['id' => $entry->getId()]));
+    }
+
+    /**
+     * Shows entry content.
      *
      * @Route("/view/{id}", requirements={"id" = "\d+"}, name="view")
      *
@@ -254,8 +322,6 @@ class EntryController extends Controller
     /**
      * Reload an entry.
      * Refetch content from the website and make it readable again.
-     *
-     * @param Entry $entry
      *
      * @Route("/reload/{id}", requirements={"id" = "\d+"}, name="reload_entry")
      *
@@ -289,9 +355,6 @@ class EntryController extends Controller
     /**
      * Changes read status for an entry.
      *
-     * @param Request $request
-     * @param Entry   $entry
-     *
      * @Route("/archive/{id}", requirements={"id" = "\d+"}, name="archive_entry")
      *
      * @return \Symfony\Component\HttpFoundation\RedirectResponse
@@ -320,9 +383,6 @@ class EntryController extends Controller
 
     /**
      * Changes starred status for an entry.
-     *
-     * @param Request $request
-     * @param Entry   $entry
      *
      * @Route("/star/{id}", requirements={"id" = "\d+"}, name="star_entry")
      *
@@ -353,8 +413,6 @@ class EntryController extends Controller
 
     /**
      * Deletes entry and redirect to the homepage or the last viewed page.
-     *
-     * @param Entry $entry
      *
      * @Route("/delete/{id}", requirements={"id" = "\d+"}, name="delete_entry")
      *
@@ -396,8 +454,6 @@ class EntryController extends Controller
     /**
      * Get public URL for entry (and generate it if necessary).
      *
-     * @param Entry $entry
-     *
      * @Route("/share/{id}", requirements={"id" = "\d+"}, name="share")
      *
      * @return \Symfony\Component\HttpFoundation\Response
@@ -422,8 +478,6 @@ class EntryController extends Controller
     /**
      * Disable public sharing for an entry.
      *
-     * @param Entry $entry
-     *
      * @Route("/share/delete/{id}", requirements={"id" = "\d+"}, name="delete_share")
      *
      * @return \Symfony\Component\HttpFoundation\Response
@@ -446,8 +500,6 @@ class EntryController extends Controller
     /**
      * Ability to view a content publicly.
      *
-     * @param Entry $entry
-     *
      * @Route("/share/{uid}", requirements={"uid" = ".+"}, name="share_entry")
      * @Cache(maxage="25200", smaxage="25200", public=true)
      *
@@ -466,60 +518,11 @@ class EntryController extends Controller
     }
 
     /**
-     * Shows untagged articles for current user.
-     *
-     * @param Request $request
-     * @param int     $page
-     *
-     * @Route("/untagged/list/{page}", name="untagged", defaults={"page" = "1"})
-     *
-     * @return \Symfony\Component\HttpFoundation\Response
-     */
-    public function showUntaggedEntriesAction(Request $request, $page)
-    {
-        return $this->showEntries('untagged', $request, $page);
-    }
-
-    /**
-     * Fetch content and update entry.
-     * In case it fails, $entry->getContent will return an error message.
-     *
-     * @param Entry  $entry
-     * @param string $prefixMessage Should be the translation key: entry_saved or entry_reloaded
-     */
-    private function updateEntry(Entry $entry, $prefixMessage = 'entry_saved')
-    {
-        $message = 'flashes.entry.notice.' . $prefixMessage;
-
-        try {
-            $this->get('wallabag_core.content_proxy')->updateEntry($entry, $entry->getUrl());
-        } catch (\Exception $e) {
-            $this->get('logger')->error('Error while saving an entry', [
-                'exception' => $e,
-                'entry' => $entry,
-            ]);
-
-            $message = 'flashes.entry.notice.' . $prefixMessage . '_failed';
-        }
-
-        if (empty($entry->getDomainName())) {
-            $this->get('wallabag_core.content_proxy')->setEntryDomainName($entry);
-        }
-
-        if (empty($entry->getTitle())) {
-            $this->get('wallabag_core.content_proxy')->setDefaultEntryTitle($entry);
-        }
-
-        $this->get('session')->getFlashBag()->add('notice', $message);
-    }
-
-    /**
      * Global method to retrieve entries depending on the given type
      * It returns the response to be send.
      *
-     * @param string  $type    Entries type: unread, starred or archive
-     * @param Request $request
-     * @param int     $page
+     * @param string $type Entries type: unread, starred or archive
+     * @param int    $page
      *
      * @return \Symfony\Component\HttpFoundation\Response
      */
@@ -532,11 +535,9 @@ class EntryController extends Controller
         switch ($type) {
             case 'search':
                 $qb = $repository->getBuilderForSearchByUser($this->getUser()->getId(), $searchTerm, $currentRoute);
-
                 break;
             case 'untagged':
                 $qb = $repository->getBuilderForUntaggedByUser($this->getUser()->getId());
-
                 break;
             case 'starred':
                 $qb = $repository->getBuilderForStarredByUser($this->getUser()->getId());
@@ -576,6 +577,9 @@ class EntryController extends Controller
             }
         }
 
+        $nbEntriesUntagged = $this->get('wallabag_core.entry_repository')
+            ->countUntaggedEntriesByUser($this->getUser()->getId());
+
         return $this->render(
             'WallabagCoreBundle:Entry:entries.html.twig', [
                 'form' => $form->createView(),
@@ -583,14 +587,45 @@ class EntryController extends Controller
                 'currentPage' => $page,
                 'searchTerm' => $searchTerm,
                 'isFiltered' => $form->isSubmitted(),
+                'nbEntriesUntagged' => $nbEntriesUntagged,
             ]
         );
     }
 
     /**
-     * Check if the logged user can manage the given entry.
+     * Fetch content and update entry.
+     * In case it fails, $entry->getContent will return an error message.
      *
-     * @param Entry $entry
+     * @param string $prefixMessage Should be the translation key: entry_saved or entry_reloaded
+     */
+    private function updateEntry(Entry $entry, $prefixMessage = 'entry_saved')
+    {
+        $message = 'flashes.entry.notice.' . $prefixMessage;
+
+        try {
+            $this->get('wallabag_core.content_proxy')->updateEntry($entry, $entry->getUrl());
+        } catch (\Exception $e) {
+            $this->get('logger')->error('Error while saving an entry', [
+                'exception' => $e,
+                'entry' => $entry,
+            ]);
+
+            $message = 'flashes.entry.notice.' . $prefixMessage . '_failed';
+        }
+
+        if (empty($entry->getDomainName())) {
+            $this->get('wallabag_core.content_proxy')->setEntryDomainName($entry);
+        }
+
+        if (empty($entry->getTitle())) {
+            $this->get('wallabag_core.content_proxy')->setDefaultEntryTitle($entry);
+        }
+
+        $this->get('session')->getFlashBag()->add('notice', $message);
+    }
+
+    /**
+     * Check if the logged user can manage the given entry.
      */
     private function checkUserAction(Entry $entry)
     {
@@ -601,8 +636,6 @@ class EntryController extends Controller
 
     /**
      * Check for existing entry, if it exists, redirect to it with a message.
-     *
-     * @param Entry $entry
      *
      * @return Entry|bool
      */
