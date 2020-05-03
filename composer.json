@@ -87,7 +87,7 @@
         "bdunogier/guzzle-site-authenticator": "^1.0.0",
         "defuse/php-encryption": "^2.1",
         "html2text/html2text": "^4.1",
-        "sulu/symfony-intl-fix": "^1.0"
+        "sulu/symfony-intl-fix": "^1.0",
         "fr3d/ldap-bundle": "^3.0"
     },
     "suggest": {
