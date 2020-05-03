@@ -1,5 +1,15 @@
 <?php
 
+// This permits to have the LdapUserInterface even when fr3d/ldap-bundle is not
+// in the packages
+namespace FR3D\LdapBundle\Model;
+
+interface LdapUserInterface
+{
+    public function setDn($dn);
+    public function getDn();
+}
+
 namespace Wallabag\UserBundle\Entity;
 
 use Doctrine\Common\Collections\ArrayCollection;
@@ -16,6 +26,7 @@ use Wallabag\ApiBundle\Entity\Client;
 use Wallabag\CoreBundle\Entity\Config;
 use Wallabag\CoreBundle\Entity\Entry;
 use Wallabag\CoreBundle\Helper\EntityTimestampsTrait;
+use FR3D\LdapBundle\Model\LdapUserInterface;
 
 /**
  * User.
@@ -28,7 +39,7 @@ use Wallabag\CoreBundle\Helper\EntityTimestampsTrait;
  * @UniqueEntity("email")
  * @UniqueEntity("username")
  */
-class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterface
+class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterface, LdapUserInterface
 {
     use EntityTimestampsTrait;
 
@@ -66,6 +77,13 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
      * @Groups({"user_api", "user_api_with_client"})
      */
     protected $email;
+
+    /**
+     * @var string
+     *
+     * @ORM\Column(name="dn", type="text", nullable=true)
+     */
+    protected $dn;
 
     /**
      * @var \DateTime
@@ -308,5 +326,34 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
         if (!empty($this->clients)) {
             return $this->clients->first();
         }
+    }
+
+    /**
+     * Set dn.
+     *
+     * @param string $dn
+     *
+     * @return User
+     */
+    public function setDn($dn)
+    {
+        $this->dn = $dn;
+
+        return $this;
+    }
+
+    /**
+     * Get dn.
+     *
+     * @return string
+     */
+    public function getDn()
+    {
+        return $this->dn;
+    }
+
+    public function isLdapUser()
+    {
+        return $this->dn !== null;
     }
 }
