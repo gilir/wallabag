@@ -1404,6 +1404,7 @@
                 "ldap"
             ],
             "time": "2016-02-12T17:45:14+00:00"
+        },
         {
             "name": "friendsofsymfony/jsrouting-bundle",
             "version": "1.6.3",
