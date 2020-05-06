@@ -4,6 +4,8 @@ services:
         arguments:
             - "@oauth_storage_ldap_wrapper"
             - "%fos_oauth_server.server.options%"
+    fos_oauth_server.service:
+        user_provider: fr3d_ldap.security.user.provider
     oauth_storage_ldap_wrapper:
         class: Wallabag\UserBundle\OAuthStorageLdapWrapper
         parent: fos_oauth_server.storage
