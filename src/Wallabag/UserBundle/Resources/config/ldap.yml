@@ -26,14 +26,3 @@ security:
             form_login:
                 provider: chain_provider
 
-fos_oauth_server:
-    db_driver:           orm
-    client_class:        Wallabag\ApiBundle\Entity\Client
-    access_token_class:  Wallabag\ApiBundle\Entity\AccessToken
-    refresh_token_class: Wallabag\ApiBundle\Entity\RefreshToken
-    auth_code_class:     Wallabag\ApiBundle\Entity\AuthCode
-    service:
-        user_provider: fr3d_ldap.security.user.provider
-        options:
-            refresh_token_lifetime: 1209600
-
